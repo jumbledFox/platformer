@@ -10,7 +10,11 @@ const KEY_RUN:        KeyCode = KeyCode::A;
 pub struct Player {
     flip_x: bool,
     jumping: bool,
+    skidding: bool,
+    skid_start_speed: f32,
     walk_timer: f32,
+    walk_dir: Option<WalkDir>,
+    running_time: f32, // How long you've been running for, used for the "p meter"
 
     pos: Vec2,
     vel: Vec2,
@@ -18,27 +22,30 @@ pub struct Player {
     gravity: f32,
     
     // Constants
-    walk_speed:   f32,
-    run_speed:    f32,
-    jump_height:  f32,
-    jump_gravity: f32,
-    fall_gravity: f32,
+    walk_speed:    f32,
+    run_beg_speed: f32,
+    run_end_speed: f32,
+    jump_height:   f32,
+    jump_gravity:  f32,
+    fall_gravity:  f32,
+}
+
+enum WalkDir {
+    Left, Right
 }
 
 impl Player {
     pub fn new(pos: Vec2) -> Player {
         Player {
-            flip_x: false,
-            jumping: false,
-            walk_timer: 0.0,
-
             pos,
 
-            walk_speed:     70.0,
-            run_speed:     110.0,
-            jump_height:   250.0,
-            jump_gravity:  512.0,
-            fall_gravity: 1024.0,
+            walk_speed:      70.0,
+            run_beg_speed:  110.0,
+            run_end_speed:  140.0,
+            jump_height:    250.0,
+            jump_gravity:   512.0,
+            fall_gravity:  1024.0,
+
 
             ..Default::default()
         }
@@ -59,30 +66,66 @@ impl Player {
         if !is_key_down(KEY_JUMP) {
             self.jumping = false;
         }
+
+        let gravity_mul = (self.vel.x.recip() * 10.0).abs().clamp(0.0, 1.0);
         let target_gravity = match is_key_down(KEY_JUMP) && self.jumping {
             true  => self.jump_gravity,
             false => self.fall_gravity,
-        } * (self.vel.x.recip() * recip_mul).abs().clamp(0.5, 1.0);
+        } * gravity_mul;
         self.gravity = self.gravity.lerp(target_gravity, delta * 100.0);
         self.vel.y -= self.gravity * delta;
 
-        // println!("{:?}", self.gravity);
+        // println!("{:?}", gravity_mul);
 
         // Moving
-        let target_speed = match is_key_down(KEY_RUN) {
-            false => self.walk_speed,
-            true  => self.run_speed,
+        // Running beginning / end
+        if self.vel.x.abs() >= self.run_beg_speed {
+            self.running_time += delta;
+        } else {
+            self.running_time = 0.0;
+        }
+        let target_speed = match (is_key_down(KEY_RUN), self.running_time > 0.8) {
+            (false, _)    => self.walk_speed,
+            (true, false) => self.run_beg_speed,
+            (true, true)  => self.run_end_speed,
+        };
+        // TODO: Make it so when skidding you go fast when running
+        let target_speed = match target_speed.abs() < self.skid_start_speed.abs() {
+            true  => target_speed.signum() * self.skid_start_speed,
+            false => target_speed,
         };
 
-        if is_key_pressed(KEY_MOVE_LEFT)  { self.target_x_vel = -target_speed; self.flip_x = true;  }
-        if is_key_pressed(KEY_MOVE_RIGHT) { self.target_x_vel =  target_speed; self.flip_x = false; }
-        if !is_key_down(KEY_MOVE_LEFT) && !is_key_down(KEY_MOVE_RIGHT) && grounded { self.target_x_vel = 0.0; }
+        if is_key_pressed(KEY_MOVE_LEFT)  { self.walk_dir = Some(WalkDir::Left)  }
+        if is_key_pressed(KEY_MOVE_RIGHT) { self.walk_dir = Some(WalkDir::Right) }
+        if !is_key_down(KEY_MOVE_LEFT) && !is_key_down(KEY_MOVE_RIGHT) && grounded { self.walk_dir = None; self.skid_start_speed = 0.0; }
+
+        self.target_x_vel = match self.walk_dir {
+            Some(WalkDir::Left)  => { self.flip_x = true; -target_speed },
+            Some(WalkDir::Right) => { self.flip_x = false; target_speed },
+            None => 0.0,
+        };
 
         self.vel.x = self.vel.x.to_target(self.target_x_vel, delta * 400.0 * if grounded { 1.0 } else { 2.0 });
 
         self.walk_timer = (self.walk_timer + self.vel.x.abs() / 1000.0).rem_euclid(1.0);
-
         if self.vel.x == 0.0 { self.walk_timer = 0.0; }
+
+        // Start skidding if you're going a direction opposed to your walk dir
+        if self.vel.x >=  self.walk_speed && matches!(self.walk_dir, Some(WalkDir::Left))
+        || self.vel.x <= -self.walk_speed && matches!(self.walk_dir, Some(WalkDir::Right)) {
+            self.skid_start_speed = self.vel.x;
+            self.skidding = true;
+        };
+
+        // Stop skidding if you're going the intended direction and you're above a certain velocity
+        if self.skidding
+        && (self.vel.x >=  self.skid_start_speed.recip() * 15.0 && matches!(self.walk_dir, Some(WalkDir::Right))
+        ||  self.vel.x <= -self.skid_start_speed.recip() * 15.0 && matches!(self.walk_dir, Some(WalkDir::Left))
+        || self.target_x_vel == 0.0) {
+            self.skidding = false;
+        }
+
+        println!("{:?}", self.vel.x);
 
         // println!("{:?}", self.vel.x);
 
@@ -95,13 +138,16 @@ impl Player {
             self.pos.y = 16.0;
             self.jumping = false;
         }
-        
-        match (self.vel.x.abs() == 0.0, self.vel.x.abs() > 75.0, grounded, self.vel.y > -50.0) {
-            (true, _,  true, _)  => 0,
-            (_, false, true, _)  => if self.walk_timer >= 0.5 { 0 } else { 2 }, 
-            (_, true,  true, _)  => if self.walk_timer >= 0.5 { 1 } else { 3 }, 
-            (_, _, false, true)  => 4,
-            (_, _, false, false) => 5,
+
+        let falling = self.vel.y < 0.0;
+        let walk_frame = self.walk_timer < 0.5;
+        match (grounded, falling, self.skidding, self.vel.x.abs()) {
+            (false, false, ..) => 5, // Jumping
+            (false, true,  ..) => 6, // Falling
+            (.., true, _)    => 4, // Skidding
+            (.., vel_x) if vel_x == 0.0 => 0, // Idle
+            (.., vel_x) if vel_x < 130.0 => if walk_frame {2} else {0} // Walking
+            _                            => if walk_frame {3} else {1} // Running
         }
     }
 
