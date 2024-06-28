@@ -31,7 +31,7 @@ async fn main() {
         // if is_key_down(macroquad::input::KeyCode::A)
 
         let screen_size = vec2(screen_width(), screen_height());
-        let scale = 5.0;
+        let scale = 3.0;
         let view_area = screen_size / scale;
         
         clear_background(Color::from_hex(0x6dcaff));

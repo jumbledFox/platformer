@@ -78,26 +78,42 @@ impl Player {
         // println!("{:?}", gravity_mul);
 
         // Moving
-        // Running beginning / end
-        if self.vel.x.abs() >= self.run_beg_speed {
-            self.running_time += delta;
-        } else {
-            self.running_time = 0.0;
+
+        // Start moving if you press a direction
+        if is_key_pressed(KEY_MOVE_LEFT)  { self.walk_dir = Some(WalkDir::Left);  }
+        if is_key_pressed(KEY_MOVE_RIGHT) { self.walk_dir = Some(WalkDir::Right); }
+        // Stop moving if you stop holding the direction you're going in
+        if (matches!(self.walk_dir, Some(WalkDir::Left))  && !is_key_down(KEY_MOVE_LEFT)
+        ||  matches!(self.walk_dir, Some(WalkDir::Right)) && !is_key_down(KEY_MOVE_RIGHT)) && grounded {
+            self.walk_dir = None;
         }
-        let target_speed = match (is_key_down(KEY_RUN), self.running_time > 0.8) {
+
+        // If you're skidding or holding run
+        // self.running_time = match (self.skidding, self.vel.x.abs() >= self.run_beg_speed) {
+        //     (true, _)  => self.running_time,
+        //     (_, true)  => self.running_time + delta,
+        //     (_, false) => self.running_time - delta,
+        // }.clamp(0.0, 0.9);
+
+        self.running_time += match (grounded, self.vel.x.abs() >= self.run_beg_speed || self.skidding || is_key_down(KEY_RUN) && self.walk_dir.is_some()) {
+            (false, _) => 0.0,
+            (_, true)  =>  delta,
+            (_, false) => -delta,
+        };
+        self.running_time = self.running_time.clamp(0.0, 0.9);
+
+        // println!("{:?} {:?}", self.skidding, self.running_time);
+
+        let target_speed = match (is_key_down(KEY_RUN), self.running_time >= 0.8) {
             (false, _)    => self.walk_speed,
             (true, false) => self.run_beg_speed,
             (true, true)  => self.run_end_speed,
         };
-        // TODO: Make it so when skidding you go fast when running
+        
         let target_speed = match target_speed.abs() < self.skid_start_speed.abs() {
             true  => target_speed.signum() * self.skid_start_speed,
             false => target_speed,
         };
-
-        if is_key_pressed(KEY_MOVE_LEFT)  { self.walk_dir = Some(WalkDir::Left)  }
-        if is_key_pressed(KEY_MOVE_RIGHT) { self.walk_dir = Some(WalkDir::Right) }
-        if !is_key_down(KEY_MOVE_LEFT) && !is_key_down(KEY_MOVE_RIGHT) && grounded { self.walk_dir = None; self.skid_start_speed = 0.0; }
 
         self.target_x_vel = match self.walk_dir {
             Some(WalkDir::Left)  => { self.flip_x = true; -target_speed },
@@ -111,25 +127,25 @@ impl Player {
         if self.vel.x == 0.0 { self.walk_timer = 0.0; }
 
         // Start skidding if you're going a direction opposed to your walk dir
-        if self.vel.x >=  self.walk_speed && matches!(self.walk_dir, Some(WalkDir::Left))
-        || self.vel.x <= -self.walk_speed && matches!(self.walk_dir, Some(WalkDir::Right)) {
+        if matches!(self.walk_dir, Some(WalkDir::Right) if self.vel.x <= -self.target_x_vel)
+        || matches!(self.walk_dir, Some(WalkDir::Left)  if self.vel.x >= -self.target_x_vel) {
+            println!("start skidding");
             self.skid_start_speed = self.vel.x;
             self.skidding = true;
-        };
-
-        // Stop skidding if you're going the intended direction and you're above a certain velocity
-        if self.skidding
-        && (self.vel.x >=  self.skid_start_speed.recip() * 15.0 && matches!(self.walk_dir, Some(WalkDir::Right))
-        ||  self.vel.x <= -self.skid_start_speed.recip() * 15.0 && matches!(self.walk_dir, Some(WalkDir::Left))
-        || self.target_x_vel == 0.0) {
-            self.skidding = false;
         }
 
-        println!("{:?}", self.vel.x);
+        // Stop skidding if you're going the intended direction and you're above a certain velocity
+        // if self.skidding
+        // && (self.vel.x >= self.skid_start_speed && matches!(self.walk_dir, Some(WalkDir::Right))
+        // ||  self.vel.x <= self.skid_start_speed && matches!(self.walk_dir, Some(WalkDir::Left))
+        // || self.target_x_vel == 0.0) {
+        //     self.skidding = false;
+        // }
 
-        // println!("{:?}", self.vel.x);
+        // println!("vel_x: {:?}\nskid_start_speed: {:?} target_x_vel: {:?}", self.vel.x, self.skid_start_speed, self.target_x_vel);
+    
 
-        // println!("---\n{:?}\n{:?}\n", self.vel.x, self.target_x_vel);
+        println!("{:?}", self.running_time);
         
         self.pos += self.vel * delta;
 
