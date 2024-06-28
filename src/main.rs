@@ -6,7 +6,7 @@ pub mod player;
 fn window_conf() -> Conf {
     Conf {
         window_title: String::from("Platformer"),
-        high_dpi: true,
+        high_dpi: false,
         ..Default::default()
     }
 }

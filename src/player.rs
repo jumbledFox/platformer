@@ -8,8 +8,8 @@ const KEY_RUN:        KeyCode = KeyCode::A;
 
 #[derive(Default)]
 pub struct Player {
-    flip_x: bool,
-    jumping: bool,
+    flip_x:   bool,
+    jumping:  bool,
     skidding: bool,
     skid_start_speed: f32,
     walk_timer: f32,
@@ -23,13 +23,21 @@ pub struct Player {
     
     // Constants
     walk_speed:    f32,
+
     run_beg_speed: f32,
+
+    run_mid_speed: f32,
+    run_mid_time:  f32,
+
     run_end_speed: f32,
+    run_end_time:  f32,
+
     jump_height:   f32,
     jump_gravity:  f32,
     fall_gravity:  f32,
 }
 
+#[derive(PartialEq, Eq)]
 enum WalkDir {
     Left, Right
 }
@@ -41,11 +49,13 @@ impl Player {
 
             walk_speed:      70.0,
             run_beg_speed:  110.0,
+            run_mid_speed:  120.0,
+            run_mid_time:     0.5,
             run_end_speed:  140.0,
+            run_end_time:     1.2,
             jump_height:    250.0,
             jump_gravity:   512.0,
             fall_gravity:  1024.0,
-
 
             ..Default::default()
         }
@@ -54,7 +64,7 @@ impl Player {
     pub fn pos(&self)    -> Vec2 { self.pos }
     pub fn flip_x(&self) -> bool { self.flip_x }
 
-    pub fn update(&mut self, delta: f32, recip_mul: f32) -> usize {
+    pub fn update(&mut self, delta: f32, _recip_mul: f32) -> usize {
         let grounded = self.pos.y <= 16.0;
 
         // Jumping
@@ -88,32 +98,40 @@ impl Player {
             self.walk_dir = None;
         }
 
-        // If you're skidding or holding run
-        // self.running_time = match (self.skidding, self.vel.x.abs() >= self.run_beg_speed) {
-        //     (true, _)  => self.running_time,
-        //     (_, true)  => self.running_time + delta,
-        //     (_, false) => self.running_time - delta,
-        // }.clamp(0.0, 0.9);
+        // If you're walking one way and actually going the other way, you should skid!
+        let prev_skidding = self.skidding;
+        let walking_opposing_velocity =
+           (self.walk_dir == Some(WalkDir::Left) && self.vel.x.is_sign_positive())
+        || (self.walk_dir == Some(WalkDir::Right) && self.vel.x.is_sign_negative());
+        self.skidding = grounded && walking_opposing_velocity;
+        
+        // If you started skidding this frame, make your x velocity lower so the skid is snappier (https://www.desmos.com/calculator/g18oxsmchz), and make sure you're not 'end' running
+        if !prev_skidding && self.skidding {
+            self.vel.x *= (0.4/-70.0) * self.vel.x.abs() + 1.3;
+            self.running_time = self.running_time.min(self.run_mid_time);
+        }
 
-        self.running_time += match (grounded, self.vel.x.abs() >= self.run_beg_speed || self.skidding || is_key_down(KEY_RUN) && self.walk_dir.is_some()) {
+        // This is the timer for if you're running at maximum speed
+        // It should only be altered if you're grounded and running in a direction, increasing if you're running at the right speed or skidding
+        self.running_time += match (grounded, (self.vel.x.abs() >= self.run_beg_speed || self.skidding || self.walk_dir.is_some()) && is_key_down(KEY_RUN)) {
             (false, _) => 0.0,
             (_, true)  =>  delta,
             (_, false) => -delta,
         };
-        self.running_time = self.running_time.clamp(0.0, 0.9);
+        self.running_time = self.running_time.clamp(0.0, self.run_end_time);
 
-        // println!("{:?} {:?}", self.skidding, self.running_time);
-
-        let target_speed = match (is_key_down(KEY_RUN), self.running_time >= 0.8) {
-            (false, _)    => self.walk_speed,
-            (true, false) => self.run_beg_speed,
-            (true, true)  => self.run_end_speed,
+        let target_speed = match is_key_down(KEY_RUN) {
+            false    => self.walk_speed,
+            _ if self.running_time >= self.run_end_time => self.run_end_speed,
+            _ if self.running_time >= self.run_mid_time => self.run_mid_speed,
+            _                                           => self.run_beg_speed,
         };
+        println!("{:?}", target_speed);
         
-        let target_speed = match target_speed.abs() < self.skid_start_speed.abs() {
-            true  => target_speed.signum() * self.skid_start_speed,
-            false => target_speed,
-        };
+        // let target_speed = match target_speed.abs() < self.skid_start_speed.abs() {
+        //     true  => target_speed.signum() * self.skid_start_speed,
+        //     false => target_speed,
+        // };
 
         self.target_x_vel = match self.walk_dir {
             Some(WalkDir::Left)  => { self.flip_x = true; -target_speed },
@@ -121,18 +139,24 @@ impl Player {
             None => 0.0,
         };
 
-        self.vel.x = self.vel.x.to_target(self.target_x_vel, delta * 400.0 * if grounded { 1.0 } else { 2.0 });
+        // let vel_step = match grounded {
+        //     true  => 300.0,
+        //     false => 100.0,
+        // };
+        let vel_step = 400.0 + self.vel.x.abs();
+
+        self.vel.x = self.vel.x.to_target(self.target_x_vel, vel_step * delta);
 
         self.walk_timer = (self.walk_timer + self.vel.x.abs() / 1000.0).rem_euclid(1.0);
         if self.vel.x == 0.0 { self.walk_timer = 0.0; }
 
         // Start skidding if you're going a direction opposed to your walk dir
-        if matches!(self.walk_dir, Some(WalkDir::Right) if self.vel.x <= -self.target_x_vel)
-        || matches!(self.walk_dir, Some(WalkDir::Left)  if self.vel.x >= -self.target_x_vel) {
-            println!("start skidding");
-            self.skid_start_speed = self.vel.x;
-            self.skidding = true;
-        }
+        // if matches!(self.walk_dir, Some(WalkDir::Right) if self.vel.x <= -self.target_x_vel)
+        // || matches!(self.walk_dir, Some(WalkDir::Left)  if self.vel.x >= -self.target_x_vel) {
+        //     println!("start skidding");
+        //     self.skid_start_speed = self.vel.x;
+        //     self.skidding = true;
+        // }
 
         // Stop skidding if you're going the intended direction and you're above a certain velocity
         // if self.skidding
@@ -145,7 +169,7 @@ impl Player {
         // println!("vel_x: {:?}\nskid_start_speed: {:?} target_x_vel: {:?}", self.vel.x, self.skid_start_speed, self.target_x_vel);
     
 
-        println!("{:?}", self.running_time);
+        // println!("{:?}", self.running_time);
         
         self.pos += self.vel * delta;
 
