@@ -24,22 +24,23 @@ async fn main() {
     tiles_texture.set_filter(macroquad::texture::FilterMode::Nearest);
 
     let mut p = Player::new(vec2(2.0, 1.0) * 16.0);
-    let mut helmet = false;
+    let mut s = 0;
 
     loop {
         let delta = get_frame_time();
         let sprite = p.update(delta);
-        if is_key_pressed(macroquad::input::KeyCode::Q) { helmet = !helmet; }
+        if is_key_pressed(macroquad::input::KeyCode::Q) { s = (s+1)%3; }
 
         let screen_size = vec2(screen_width(), screen_height());
         let scale = SCALE_F;
         let view_area = screen_size / scale * 2.0;
         
         clear_background(Color::from_hex(0x6dcaff));
-        // clear_background(BLACK);
+        // clear_background(Color::from_hex(0x000000));
         set_camera(&Camera2D {
             zoom: scale / screen_size,
-            target: view_area / 2.0,
+            // target: view_area / 2.0,
+            target: vec2(p.pos().x, view_area.y / 2.0),
             ..Default::default()
         });
 
@@ -50,8 +51,11 @@ async fn main() {
             });
         };
 
+        let beg = (p.pos().x / 16.0 - view_area.x / 16.0 / 2.0).floor() as usize;
+        let end = beg + (view_area.x / 16.0).ceil() as usize;
+        
         let bottom_y = (view_area.y / 16.0 - 1.0).ceil() * 16.0;
-        for i in 0..(view_area.x / 16.0).ceil() as usize {
+        for i in beg..end {
             let x = i as f32;
             let y = bottom_y / 16.0;
             draw_tile(x, y, 9.0);
@@ -63,9 +67,9 @@ async fn main() {
             }
         }
         
-        draw_texture_ex(&player_texture, p.pos().x.round(), (bottom_y - p.pos().y - 16.0).round(), WHITE, DrawTextureParams {
+        draw_texture_ex(&player_texture, p.pos().x, bottom_y - p.pos().y - 16.0, WHITE, DrawTextureParams {
             flip_x: p.flip_x(),
-            source: Some(Rect::new(sprite as f32 * 16.0, if helmet { 32.0 } else { 0.0 }, 16.0, 32.0)),
+            source: Some(Rect::new(sprite as f32 * 16.0, 32.0 * s as f32, 16.0, 32.0)),
             ..Default::default()
         });
 

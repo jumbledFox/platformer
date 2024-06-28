@@ -62,25 +62,19 @@ impl Player {
         let grounded = self.pos.y <= 16.0;
 
         // Jumping
-
+        // self.vel.y -= self.gravity * delta;
         // if is_key_pressed(KEY_JUMP) && grounded {
         //     self.vel.y = self.jump_height; 
         //     self.jumping = true;
         // }
-
-        // if !is_key_down(KEY_JUMP) {
-        //     self.jumping = false;
-        // }
-
-        // let gravity_mul = (self.vel.x.recip() * 10.0).abs().clamp(0.0, 1.0);
         // let target_gravity = match is_key_down(KEY_JUMP) && self.jumping {
         //     true  => self.jump_gravity,
         //     false => self.fall_gravity,
-        // } * gravity_mul;
+        // };
         // self.gravity = self.gravity.lerp(target_gravity, delta * 100.0);
-        // self.vel.y -= self.gravity * delta;
 
-        // println!("{:?}", gravity_mul);
+        // Temporary hacky thing for testing... ignore this (and all mentions of it)
+        let foo = self.pos.x >= 16.0 * 11.0 || self.pos.x <= 16.0 * 1.0;
 
         // Moving
 
@@ -102,9 +96,10 @@ impl Player {
             self.running = false;
         }
         // If you're not holding down the run key, you're not running, duh!
-        if !is_key_down(KEY_RUN) {
+        if !is_key_down(KEY_RUN) || foo {
             self.running = false;
         }
+
         // This is the timer for if you're running at maximum speed
         // If you're not grounded, it should freeze. Otherwise it should increase/decrease depending on if you're running or not.
         self.running_time += match (!grounded, self.running) {
@@ -117,11 +112,11 @@ impl Player {
         // If you're walking one way and actually going the other way, you should skid!
         let prev_skidding = self.skidding;
         let walking_opposing_velocity =
-           (self.walk_dir == Some(WalkDir::Left)  && self.vel.x.is_sign_positive() && self.vel.x != 0.0)
-        || (self.walk_dir == Some(WalkDir::Right) && self.vel.x.is_sign_negative() && self.vel.x != 0.0);
+           (self.walk_dir == Some(WalkDir::Left)  && self.vel.x > 0.0)
+        || (self.walk_dir == Some(WalkDir::Right) && self.vel.x < 0.0);
         self.skidding = grounded && walking_opposing_velocity;
         
-        // If you started skidding this frame, make your x velocity lower so the skid is snappier (https://www.desmos.com/calculator/qmob28z1yb)
+        // If you started skidding this frame, make your x velocity lower so the skid is snappier (https://www.desmos.com/calculator/qmob28z1yb).
         // And, if you're running fast, go back to the beginning running speed (by setting the running_time back).
         if !prev_skidding && self.skidding {
             let g = (1.0 - 0.5) / (self.run_beg_speed - self.run_end_speed);
@@ -130,10 +125,10 @@ impl Player {
         }
 
         // Set a target velocity depending on your direction
-        let target_speed = || match is_key_down(KEY_RUN) {
+        let target_speed = || match is_key_down(KEY_RUN) && !foo {
             false => self.walk_speed,
             true  => {
-                // Lerp nicely between the beginning speed and the end speed (https://www.desmos.com/calculator/vl2lxkgnsv)
+                // Lerp nicely between the beginning speed and the end speed (https://www.desmos.com/calculator/vl2lxkgnsv).
                 let t = (1.0 / (self.run_lerp_end_time - self.run_lerp_beg_time)) * self.running_time - (self.run_lerp_beg_time / (self.run_lerp_end_time - self.run_lerp_beg_time));
                 f32::lerp(self.run_beg_speed, self.run_end_speed, t.clamp(0.0, 1.0))
             }
@@ -144,20 +139,20 @@ impl Player {
             None => 0.0,
         };
 
-        // TODO: vel_step
-        // let vel_step = match grounded {
-        //     true  => 300.0,
-        //     false => 100.0,
-        // };
+        // Move the velocity towards the target, faster if you're moving faster.
         let vel_step = 400.0 + self.vel.x.abs();
-
         self.vel.x = self.vel.x.to_target(self.target_x_vel, vel_step * delta);
-
+        
+        // Animate the sprite walking depending on how fast you're going.
         self.walk_timer = (self.walk_timer + self.vel.x.abs() / 1000.0).rem_euclid(1.0);
         if self.vel.x == 0.0 { self.walk_timer = 0.0; }
 
-
+        // Actually move the player!
         self.pos += self.vel * delta;
+        
+        // Everything below here needs reworking
+        if self.pos.x >= 16.0 * 11.0 { self.pos.x = 16.0 * 11.0; self.vel.x = 0.0; }
+        if self.pos.x <= 16.0 *  1.0 { self.pos.x = 16.0 *  1.0; self.vel.x = 0.0; }
 
         let grounded = self.grounded();
         if grounded {
@@ -168,10 +163,10 @@ impl Player {
         let falling = self.vel.y < 0.0;
         let walk_frame = self.walk_timer < 0.5;
         match (grounded, falling, self.skidding, self.vel.x.abs()) {
-            (false, false, ..) => 5, // Jumping
-            (false, true,  ..) => 6, // Falling
-            (.., true, _)    => 4, // Skidding
-            (.., vel_x) if vel_x == 0.0 => 0, // Idle
+            (false, false, ..)          => 5, // Jumping
+            (false, true,  ..)          => 6, // Falling
+            (.., true, _)               => 4, // Skidding
+            (.., vel_x) if vel_x == 0.0 && self.walk_dir == None => 0, // Idle
             (.., vel_x) if vel_x < self.run_end_speed => if walk_frame {2} else {0} // Walking
             _                                         => if walk_frame {3} else {1} // Running
         }
