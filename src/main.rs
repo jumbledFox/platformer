@@ -60,11 +60,16 @@ async fn main() {
             let y = bottom_y / 16.0;
             draw_tile(x, y, 9.0);
             match i % 12 {
-                0 => { for j in 1..4 { draw_tile(x, y - j as f32, 6.0); } },
+                0 => { for j in 1..4 { draw_tile(x, y - j as f32, 2.0); } },
                 6 => { for j in 1..3 { draw_tile(x, y - j as f32, 6.0); } },
                 3 => { draw_tile(x, y - 3.0 as f32,7.0); },
                 _=> {},
             }
+
+            let space = i % 15;
+            if space == 5                  { draw_tile(x, y - 7.0, 3.0) }
+            else if space > 5 && space < 9 { draw_tile(x, y - 7.0, 4.0) }
+            else if space == 9             { draw_tile(x, y - 7.0, 5.0) }
         }
         
         draw_texture_ex(&player_texture, p.pos().x, bottom_y - p.pos().y - 16.0, WHITE, DrawTextureParams {
