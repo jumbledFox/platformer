@@ -1,4 +1,4 @@
-use macroquad::{camera::{set_camera, Camera2D}, color::{Color, WHITE}, input::is_key_pressed, math::{vec2, Rect}, texture::{draw_texture_ex, DrawTextureParams, Texture2D}, time::get_frame_time, window::{clear_background, next_frame, screen_height, screen_width, Conf}};
+use macroquad::{camera::{set_camera, Camera2D}, color::{Color, WHITE}, input::is_key_pressed, math::{vec2, Rect}, text::draw_text, texture::{draw_texture_ex, DrawTextureParams, Texture2D}, time::get_frame_time, window::{clear_background, next_frame, screen_height, screen_width, Conf}};
 use player::Player;
 
 pub mod player;
@@ -77,6 +77,13 @@ async fn main() {
             source: Some(Rect::new(sprite as f32 * 16.0, 32.0 * s as f32, 16.0, 32.0)),
             ..Default::default()
         });
+
+        set_camera(&Camera2D {
+            zoom: scale / screen_size,
+            target: view_area / 2.0,
+            ..Default::default()
+        });
+        draw_text(&format!("FPS: {:?}", delta.recip()), 0.0, 10.0, 16.0, Color::from_hex(0xFFFFFF));
 
         next_frame().await
     }
