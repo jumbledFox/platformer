@@ -1,4 +1,6 @@
-use macroquad::{color::{BLUE, GREEN, RED, YELLOW}, input::{is_key_down, is_key_pressed, KeyCode}, math::{vec2, FloatExt, Vec2}, shapes::draw_circle};
+use macroquad::{color::{BLUE, RED, YELLOW}, input::{is_key_down, is_key_pressed, KeyCode}, math::{vec2, FloatExt, Vec2}, shapes::draw_circle};
+
+use crate::stage::Stage;
 
 const KEY_MOVE_LEFT:  KeyCode = KeyCode::Left;
 const KEY_MOVE_RIGHT: KeyCode = KeyCode::Right;
@@ -22,6 +24,7 @@ pub struct Player {
     running: bool,
 
     pos: Vec2,
+    prev_pos: Vec2,
     vel: Vec2,
     target_x_vel: f32,
     gravity: f32,
@@ -60,7 +63,7 @@ impl Player {
     pub fn pos(&self)    -> Vec2 { self.pos }
     pub fn flip_x(&self) -> bool { self.flip_x }
 
-    pub fn update(&mut self, delta: f32) -> usize {
+    pub fn update(&mut self, delta: f32, stage: &Stage) -> usize {
         // Jumping
         self.vel.y = (self.vel.y + self.gravity * delta).min(self.max_fall_speed);
 
@@ -145,18 +148,52 @@ impl Player {
         self.vel.x = self.vel.x.to_target(self.target_x_vel, vel_step * delta);
         
         // Actually move the player!
+        self.prev_pos = self.pos;
         self.pos += self.vel * delta;
-        // This only works for a flat, infinite floor, just for testing!!
-        self.grounded = self.pos.y >= 13.0 * 16.0;
-        if self.grounded { self.pos.y = 13.0 * 16.0; }
+
+        // Collisions and resolution
+
+        // Foot collisions
+        let foot_l = vec2( 5.5, 32.0);
+        let foot_r = vec2(10.5, 32.0);
+
+        let feet_colliding = stage.tile_solid(foot_l + self.pos) || stage.tile_solid(foot_r + self.pos);
+
+        // If you're not grounded and your feet are in a tile, you should go to the top of it
+        if feet_colliding && self.pos.y >= self.prev_pos.y {
+            self.pos.y = (self.pos.y / 16.0).floor() * 16.0;
+            self.vel.y = 0.0;
+        }
+        self.grounded = feet_colliding;
+
+        // Side collisions
+        let side_l = vec2( 3.5, 26.0);
+        let side_r = vec2(12.5, 26.0);
+
+        if stage.tile_solid(side_l + self.pos) && self.pos.x < self.prev_pos.x {
+            self.pos.x = (self.pos.x / 16.0).ceil() * 16.0 - side_l.x;
+            self.vel.x = 0.0;
+        }
+        if stage.tile_solid(side_r + self.pos) && self.pos.x > self.prev_pos.x {
+            self.pos.x = (self.pos.x / 16.0).ceil() * 16.0 - side_r.x;
+            self.vel.x = 0.0;
+        }
+
+        // Head collision
+        let head = vec2( 8.0, 16.5);
         
+        if stage.tile_solid(head + self.pos) && self.pos.y < self.prev_pos.y {
+            self.pos.y = (self.pos.y / 16.0).ceil() * 16.0;
+            self.vel.y = 0.0;
+        }
+
         // Animate the sprite walking depending on how fast you're going.
         self.walk_timer = (self.walk_timer + self.vel.x.abs() / 1000.0).rem_euclid(1.0);
         if self.vel.x == 0.0 { self.walk_timer = 0.0; }
         
         // Everything below here needs reworking
         // The final function should NOT return the sprite number, but for now this works...
-        let falling = self.vel.y > 0.0;
+        let falling = self.vel.y >= 0.0;
         let walk_frame = self.walk_timer < 0.5;
         match (self.grounded, falling, self.skidding, self.vel.x.abs()) {
             (false, false, ..) => 5, // Jumping
