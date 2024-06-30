@@ -1,4 +1,4 @@
-use macroquad::{input::{is_key_down, is_key_pressed, KeyCode}, math::{FloatExt, Vec2}};
+use macroquad::{color::{BLUE, GREEN, RED, YELLOW}, input::{is_key_down, is_key_pressed, KeyCode}, math::{vec2, FloatExt, Vec2}, shapes::draw_circle};
 
 const KEY_MOVE_LEFT:  KeyCode = KeyCode::Left;
 const KEY_MOVE_RIGHT: KeyCode = KeyCode::Right;
@@ -13,7 +13,7 @@ enum WalkDir {
 #[derive(Default)]
 pub struct Player {
     flip_x:   bool,
-    // jumping:  bool,
+    jumping:  bool,
     grounded: bool,
     skidding: bool,
     walk_timer: f32,
@@ -24,7 +24,7 @@ pub struct Player {
     pos: Vec2,
     vel: Vec2,
     target_x_vel: f32,
-    // gravity: f32,
+    gravity: f32,
     
     // Constants
     walk_speed:    f32,
@@ -32,9 +32,10 @@ pub struct Player {
     run_end_speed: f32,
     run_lerp_beg_time:  f32,
     run_lerp_end_time:  f32,
-    // jump_height:   f32,
-    // jump_gravity:  f32,
-    // fall_gravity:  f32,
+    jump_vel:     f32,
+    jump_gravity: f32,
+    fall_gravity: f32,
+    max_fall_speed: f32,
 }
 
 impl Player {
@@ -47,9 +48,10 @@ impl Player {
             run_end_speed:      150.0,
             run_lerp_beg_time:    0.4,
             run_lerp_end_time:    1.2,
-            // jump_height:        250.0,
-            // jump_gravity:       512.0,
-            // fall_gravity:      1024.0,
+            jump_vel:           250.0,
+            jump_gravity:       600.0,
+            fall_gravity:      1100.0,
+            max_fall_speed:     500.0,
 
             ..Default::default()
         }
@@ -59,19 +61,24 @@ impl Player {
     pub fn flip_x(&self) -> bool { self.flip_x }
 
     pub fn update(&mut self, delta: f32) -> usize {
-        // Jumping - not yet properly implemented.
-        /*
-        self.vel.y -= self.gravity * delta;
-        if is_key_pressed(KEY_JUMP) && grounded {
-            self.vel.y = self.jump_height; 
-            self.jumping = true;
+        // Jumping
+        self.vel.y = (self.vel.y + self.gravity * delta).min(self.max_fall_speed);
+
+        // If you're no-longer holding the jump key, or you were jumping and you're either grounded or now going down, you're not jumping anymore!
+        if !is_key_down(KEY_JUMP) || self.jumping && (self.grounded || self.vel.y > 0.0) {
+            self.jumping = false;
         }
-        let target_gravity = match is_key_down(KEY_JUMP) && self.jumping {
+        // Jump if you try to and are able
+        if is_key_pressed(KEY_JUMP) && self.grounded {
+            self.jumping = true;
+            self.vel.y = -self.jump_vel;
+        } 
+        // Your gravity should be decreased when holding the jump key
+        self.gravity = match self.jumping {
             true  => self.jump_gravity,
             false => self.fall_gravity,
         };
-        self.gravity = self.gravity.lerp(target_gravity, delta * 100.0);
-        */
+        // TODO: Your gravity should be decreased depending on your horizontal speed
 
         // Moving
 
@@ -140,7 +147,8 @@ impl Player {
         // Actually move the player!
         self.pos += self.vel * delta;
         // This only works for a flat, infinite floor, just for testing!!
-        self.grounded = self.pos.y <= 16.0;
+        self.grounded = self.pos.y >= 13.0 * 16.0;
+        if self.grounded { self.pos.y = 13.0 * 16.0; }
         
         // Animate the sprite walking depending on how fast you're going.
         self.walk_timer = (self.walk_timer + self.vel.x.abs() / 1000.0).rem_euclid(1.0);
@@ -148,7 +156,7 @@ impl Player {
         
         // Everything below here needs reworking
         // The final function should NOT return the sprite number, but for now this works...
-        let falling = self.vel.y < 0.0;
+        let falling = self.vel.y > 0.0;
         let walk_frame = self.walk_timer < 0.5;
         match (self.grounded, falling, self.skidding, self.vel.x.abs()) {
             (false, false, ..) => 5, // Jumping
@@ -158,6 +166,20 @@ impl Player {
             (.., vel_x) if vel_x < self.run_end_speed => if walk_frame {2} else {0} // Walking
             _                                         => if walk_frame {3} else {1} // Running
         }
+    }
+
+    pub fn debug_draw(&self) {
+        let foot_l = vec2( 5.5, 32.0) + self.pos;
+        let foot_r = vec2(10.5, 32.0) + self.pos;
+        let side_l = vec2( 3.5, 26.0) + self.pos;
+        let side_r = vec2(12.5, 26.0) + self.pos;
+        let head   = vec2( 8.0, 16.5) + self.pos;
+
+        draw_circle(foot_l.x, foot_l.y, 0.5, YELLOW);
+        draw_circle(foot_r.x, foot_r.y, 0.5, YELLOW);
+        draw_circle(side_l.x, side_l.y, 0.5, RED);
+        draw_circle(side_r.x, side_r.y, 0.5, RED);
+        draw_circle(head.x,   head.y,   0.5, BLUE);
     }
 }
 
