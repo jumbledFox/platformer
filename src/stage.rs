@@ -34,7 +34,7 @@ impl Stage {
     pub fn pos_to_index(&self, pos: Vec2) -> Option<usize> {
         let pos = pos / 16.0;
         // If outside the map, do nothing
-        if pos.x < 0.0 || pos.x >= self.width as f32 + 1.0 || pos.y < 0.0  || pos.y > (self.tiles.len() / self.width) as f32 + 1.0 {
+        if pos.x < 0.0 || pos.x >= self.width as f32 || pos.y < 0.0  || pos.y > (self.tiles.len() / self.width) as f32 + 1.0 {
             return None;
         }
 

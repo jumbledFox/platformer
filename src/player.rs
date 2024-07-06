@@ -2,10 +2,10 @@ use macroquad::{color::{BLUE, RED, WHITE, YELLOW}, input::{is_key_down, is_key_p
 
 use crate::{particles::Particles, stage::Stage};
 
-const KEY_MOVE_LEFT:  KeyCode = KeyCode::Left;
-const KEY_MOVE_RIGHT: KeyCode = KeyCode::Right;
-const KEY_JUMP:       KeyCode = KeyCode::Z;
-const KEY_RUN:        KeyCode = KeyCode::A;
+const KEY_MOVE_LEFT:  KeyCode = KeyCode::A;         // KeyCode::Left;
+const KEY_MOVE_RIGHT: KeyCode = KeyCode::D;         // KeyCode::Right;
+const KEY_JUMP:       KeyCode = KeyCode::Space;     // KeyCode::Z;
+const KEY_RUN:        KeyCode = KeyCode::LeftShift; // KeyCode::A;
 
 #[derive(PartialEq, Eq)]
 enum WalkDir {
@@ -176,10 +176,12 @@ impl Player {
         if stage.tile_solid_pos(side_l + self.pos) && self.pos.x < self.prev_pos.x {
             self.pos.x = (self.pos.x / 16.0).ceil() * 16.0 - side_l.x;
             self.vel.x = 0.0;
+            self.running_time = 0.0;
         }
         if stage.tile_solid_pos(side_r + self.pos) && self.pos.x > self.prev_pos.x {
             self.pos.x = (self.pos.x / 16.0).ceil() * 16.0 - side_r.x;
             self.vel.x = 0.0;
+            self.running_time = 0.0;
         }
 
         // Head collision

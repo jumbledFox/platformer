@@ -1,23 +1,23 @@
 use std::{thread, time::Duration};
 
-use macroquad::{camera::{set_camera, Camera2D}, color::{Color, WHITE}, input::is_key_pressed, math::{vec2, Rect}, text::draw_text, texture::{draw_texture_ex, DrawTextureParams, Texture2D}, time::get_frame_time, window::{clear_background, next_frame, screen_height, screen_width, Conf}};
+use macroquad::{camera::{set_camera, Camera2D}, color::{Color, WHITE}, input::is_key_pressed, math::{vec2, Rect, Vec2}, miniquad::window::{dpi_scale, screen_size}, text::draw_text, texture::{draw_texture_ex, DrawTextureParams, Texture2D}, time::get_frame_time, window::{clear_background, next_frame, screen_height, screen_width, Conf}};
 use particles::Particles;
 use stage::Stage;
 use player::Player;
 
 pub mod particles;
+pub mod world;
 pub mod stage;
 pub mod player;
 
-const SCALE: i32 = 8;
-const SCALE_F: f32 = SCALE as f32;
+const VIEW_WIDTH:  i32 = 352;
+const VIEW_HEIGHT: i32 = 224;
 
 fn window_conf() -> Conf {
     Conf {
         window_title: String::from("Platformer"),
-        window_width:  352 * SCALE,
-        window_height: 224 * SCALE,
-        high_dpi: true,
+        window_width:  VIEW_WIDTH  * 4,
+        window_height: VIEW_HEIGHT * 4,
         ..Default::default()
     }
 }
@@ -60,16 +60,26 @@ async fn main() {
 
         particles.update(delta);
 
-        let screen_size = vec2(screen_width(), screen_height());
-        let scale = SCALE_F;
-        let view_area = screen_size / scale * 2.0;
-        
         clear_background(Color::from_hex(0x6dcaff));
-        // clear_background(Color::from_hex(0x000000));
-        set_camera(&Camera2D {
-            zoom: scale / screen_size,
-            // target: view_area / 2.0,
-            target: vec2(player.pos().x.max(view_area.x / 2.0), view_area.y / 2.0),
+        
+        let view_size = vec2(VIEW_WIDTH as f32, VIEW_HEIGHT as f32);
+        let window_size = vec2(screen_size().0, screen_size().1);
+        
+        let scale = (window_size / view_size).min_element().floor().max(1.0);
+        let remaining_size = (window_size / scale) - view_size; 
+        let camera_size = view_size + remaining_size;
+    
+        set_camera(
+            &Camera2D::from_display_rect(Rect::new(
+                0.0,
+                camera_size.y,
+                camera_size.x,
+               -camera_size.y,
+            ))
+        );
+        draw_texture_ex(&tiles_texture, 0.0, 0.0, WHITE, DrawTextureParams {
+            source: Some(Rect::new(0.0, 0.0, 16.0, 16.0)),
+            // dest_size: Some(vec2(32.0,32.0) * 4.0),
             ..Default::default()
         });
 
@@ -87,8 +97,8 @@ async fn main() {
         particles.draw(&particles_texture);
 
         set_camera(&Camera2D {
-            zoom: scale / screen_size,
-            target: view_area / 2.0,
+            // zoom: scale / screen_size,
+            // target: view_area / 2.0,
             ..Default::default()
         });
         draw_text(&format!("FPS: {:?}", delta.recip()), 0.0, 10.0, 16.0, Color::from_hex(0xFFFFFF));
